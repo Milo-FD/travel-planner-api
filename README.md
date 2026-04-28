@@ -18,15 +18,15 @@ Built with Node.js, Express, PostgreSQL, and Claude AI. Companion iOS app built 
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
-src/
-├── controllers/      # Request handlers
-├── services/         # Business logic and external integrations
-├── routes/           # API route definitions
-├── middleware/       # Auth, error handling
-├── db/               # PostgreSQL connection pool
-└── utils/            # AppError, async wrapper, validation schemas
+    src/
+    ├── controllers/      # Request handlers
+    ├── services/         # Business logic and external integrations
+    ├── routes/           # API route definitions
+    ├── middleware/        # Auth, error handling
+    ├── db/               # PostgreSQL connection pool
+    └── utils/            # AppError, async wrapper, validation schemas
 
 ---
 
