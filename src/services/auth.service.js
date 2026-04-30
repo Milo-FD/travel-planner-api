@@ -3,24 +3,21 @@ const jwt = require('jsonwebtoken');
 const pool = require('../db/pool');
 const AppError = require('../utils/AppError');
 
-const register = async (email, password) => {
-    // Check if user already exists.
+const register = async (name, email, password) => {
     const existing = await pool.query(
         'SELECT id FROM users WHERE email = $1',
         [email]
     );
 
     if (existing.rows.length > 0) {
-        throw new AppError('Email already in use');
+        throw new Error('Email already in use');
     }
 
-    // Hash the password (10 = how hard it is to crack, higer = sloer but safer)
     const password_hash = await bcrypt.hash(password, 10);
 
-    // Save user to database
     const result = await pool.query(
-        'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
-        [email, password_hash]
+        'INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email, created_at',
+        [name, email, password_hash]
     );
 
     return result.rows[0];
@@ -58,10 +55,9 @@ const login = async (email, password) => {
 
 const getMe = async (userId) => {
     const result = await pool.query(
-        'SELECT id, email, created_at FROM users WHERE id = $1',
+        'SELECT id, name, email, created_at FROM users WHERE id = $1',
         [userId]
     );
-
     return result.rows[0];
 };
 

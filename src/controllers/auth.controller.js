@@ -3,9 +3,9 @@ const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
 
 const register = catchAsync(async (req, res) => {
-  const { email, password } = req.body;
-  const user = await authService.register(email, password);
-  res.status(201).json({ message: 'User created successfully', user });
+    const { name, email, password } = req.body;
+    const user = await authService.register(name, email, password);
+    res.status(201).json({ message: 'User created successfully', user });
 });
 
 const login = catchAsync(async (req, res) => {
