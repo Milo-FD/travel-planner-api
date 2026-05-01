@@ -18,7 +18,7 @@ const schemas = {
     name: Joi.string().min(2).required(),
     email: Joi.string().email().required(),
     password: Joi.string().min(6).required()
-}),
+    }),
 
     login: Joi.object({
         email: Joi.string().email().required(),
@@ -26,15 +26,21 @@ const schemas = {
     }),
 
     createPlan: Joi.object({
-        location: Joi.string().min(2).required(),
-        startDate: Joi.string().isoDate().required(),
-        endDate: Joi.string().isoDate().required(),
-        preferences: Joi.object({
-            budget: Joi.string().valid('low', 'medium', 'high').default('medium'),
-            interests: Joi.array().items(Joi.string()).default([]),
-            pace: Joi.string().valid('relaxed', 'moderate', 'fast').default('moderate')
-        }).default()
-    })
+    location: Joi.string().min(2).required(),
+    startDate: Joi.string().isoDate().required(),
+    endDate: Joi.string().isoDate().required(),
+    mood: Joi.string().valid(
+        'dopamine_mode',
+        'healing_era',
+        'broke_mode',
+        'hot_girl_walk',
+        'romantic_mode',
+        'social_battery_low',
+        'chaos_mode',
+        'solo_recharge'
+    ).required(),
+    isEmergency: Joi.boolean().default(false)
+     })
 };
 
 module.exports = { validateBody, schemas };

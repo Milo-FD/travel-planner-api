@@ -72,13 +72,12 @@ const getPlanById = async (planId, userId) => {
     return result.rows[0];
 };
 
-const createPlan = async (userId, { location, startDate, endDate, preferences }) => {
-    // Step 1: Create the plan in DB with status 'pending'
+const createPlan = async (userId, { location, startDate, endDate, mood, isEmergency = false }) => {    // Step 1: Create the plan in DB with status 'pending'
     const planResult = await pool.query(
-        `INSERT INTO plans (user_id, location, start_date, end_date, preferences, status)
-         VALUES ($1, $2, $3, $4, $5, 'pending')
-         RETURNING *`,
-        [userId, location, startDate, endDate, JSON.stringify(preferences)]
+    `INSERT INTO plans (user_id, location, start_date, end_date, preferences, status)
+     VALUES ($1, $2, $3, $4, $5, 'pending')
+     RETURNING *`,
+    [userId, location, startDate, endDate, JSON.stringify({ mood, isEmergency })]
     );
 
     const plan = planResult.rows[0];
@@ -87,7 +86,7 @@ const createPlan = async (userId, { location, startDate, endDate, preferences })
     const weatherData = await getWeatherForTrip(location, startDate, endDate);
 
     // Step 3: Generate itinerary with Claude
-    const itinerary = await generateItinerary(location, preferences, weatherData);
+const itinerary = await generateItinerary(location, mood, weatherData, isEmergency);
 
     // Step 4: Save each day and its activities to DB
     for (const day of itinerary) {
