@@ -45,4 +45,25 @@ const deletePlan = catchAsync(async (req, res) => {
   res.status(200).json({ message: 'Plan deleted successfully' });
 });
 
-module.exports = { createPlan, getPlans, getPlan, deletePlan };
+const getDiscovery = catchAsync(async (req, res) => {
+    const { city } = req.params;
+    const discovery = await plansService.getDiscovery(city);
+    res.status(200).json(discovery);
+});
+
+const deleteActivity = catchAsync(async (req, res) => {
+    const { planId, dayId, activityId } = req.params;
+    const result = await plansService.deleteActivity(planId, dayId, activityId, req.userId);
+    if (!result) throw new AppError('Activity not found', 404);
+    res.status(200).json({ message: 'Activity deleted successfully' });
+});
+
+const regenerateActivity = catchAsync(async (req, res) => {
+    const { planId, dayId } = req.params;
+    const { timeSlot } = req.body;
+    const activity = await plansService.regenerateActivity(planId, dayId, timeSlot, req.userId);
+    if (!activity) throw new AppError('Could not regenerate activity', 404);
+    res.status(201).json(activity);
+});
+
+module.exports = { createPlan, getPlans, getPlan, deletePlan, getDiscovery, deleteActivity, regenerateActivity };

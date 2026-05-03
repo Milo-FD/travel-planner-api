@@ -11,5 +11,8 @@ router.post('/', validateBody(schemas.createPlan), plansController.createPlan);
 router.get('/', plansController.getPlans);
 router.get('/:id', plansController.getPlan);
 router.delete('/:id', plansController.deletePlan);
+router.get('/discovery/:city', plansController.getDiscovery);
+router.delete('/:planId/days/:dayId/activities/:activityId', plansController.deleteActivity);
+router.post('/:planId/days/:dayId/activities/regenerate', plansController.regenerateActivity);
 
 module.exports = router;
