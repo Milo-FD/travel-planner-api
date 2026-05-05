@@ -3,6 +3,8 @@ const { getWeatherForTrip } = require('./weather.service');
 const { generateItinerary } = require('./itinerary.service');
 const Anthropic = require('@anthropic-ai/sdk');
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const { geocodePlace } = require('./geocoding.service');
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Internal - no userId filter, used right after creation
 const getFullPlanById = async (planId) => {
@@ -22,7 +24,10 @@ const getFullPlanById = async (planId) => {
                                 'title', a.title,
                                 'description', a.description,
                                 'type', a.type,
-                                'reason', a.reason
+                                'reason', a.reason,
+                                'placeName', a.place_name,
+                                'lat', a.lat,
+                                'lng', a.lng
                             )
                         )
                         FROM activities a
@@ -57,7 +62,10 @@ const getPlanById = async (planId, userId) => {
                                 'title', a.title,
                                 'description', a.description,
                                 'type', a.type,
-                                'reason', a.reason
+                                'reason', a.reason,
+                                'placeName', a.place_name,
+                                'lat', a.lat,
+                                'lng', a.lng
                             )
                         )
                         FROM activities a
@@ -74,12 +82,13 @@ const getPlanById = async (planId, userId) => {
     return result.rows[0];
 };
 
-const createPlan = async (userId, { location, startDate, endDate, mood, isEmergency = false }) => {    // Step 1: Create the plan in DB with status 'pending'
+const createPlan = async (userId, { location, startDate, endDate, mood, isEmergency = false }) => {
+    // Step 1: Create the plan in DB with status 'pending'
     const planResult = await pool.query(
-    `INSERT INTO plans (user_id, location, start_date, end_date, preferences, status)
-     VALUES ($1, $2, $3, $4, $5, 'pending')
-     RETURNING *`,
-    [userId, location, startDate, endDate, JSON.stringify({ mood, isEmergency })]
+        `INSERT INTO plans (user_id, location, start_date, end_date, preferences, status)
+         VALUES ($1, $2, $3, $4, $5, 'pending')
+         RETURNING *`,
+        [userId, location, startDate, endDate, JSON.stringify({ mood, isEmergency })]
     );
 
     const plan = planResult.rows[0];
@@ -88,7 +97,7 @@ const createPlan = async (userId, { location, startDate, endDate, mood, isEmerge
     const weatherData = await getWeatherForTrip(location, startDate, endDate);
 
     // Step 3: Generate itinerary with Claude
-const itinerary = await generateItinerary(location, mood, weatherData, isEmergency);
+    const itinerary = await generateItinerary(location, mood, weatherData, isEmergency);
 
     // Step 4: Save each day and its activities to DB
     for (const day of itinerary) {
@@ -99,18 +108,27 @@ const itinerary = await generateItinerary(location, mood, weatherData, isEmergen
             [plan.id, day.date, JSON.stringify(weatherForDay?.weather || {})]
         );
 
+        // FIX 1: planDayId was missing
         const planDayId = dayResult.rows[0].id;
 
         for (const activity of day.activities) {
+    await sleep(1100); // just over 1 second to be safe
+    const { lat, lng } = await geocodePlace(activity.placeName, location);
+
             await pool.query(
-                'INSERT INTO activities (plan_day_id, time_slot, title, description, type, reason) VALUES ($1, $2, $3, $4, $5, $6)',
+                `INSERT INTO activities 
+                 (plan_day_id, time_slot, title, description, type, reason, place_name, lat, lng)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                 [
                     planDayId,
                     activity.timeSlot,
                     activity.title,
                     activity.description,
                     activity.type,
-                    activity.reason
+                    activity.reason,
+                    activity.placeName,
+                    lat,
+                    lng
                 ]
             );
         }
@@ -194,7 +212,7 @@ Return ONLY a JSON array with exactly 4 items:
     const end = fullResponse.lastIndexOf(']');
 
     if (start === -1 || end === -1) {
-        throw new AppError('Could not generate discovery content', 500);
+        throw new Error('Could not generate discovery content');
     }
 
     return JSON.parse(fullResponse.substring(start, end + 1));
@@ -227,7 +245,7 @@ const regenerateActivity = async (planId, dayId, timeSlot, userId) => {
     const day = plan.days?.find(d => d.id === dayId);
     if (!day) return null;
 
-    // Generate a single new activity with Claude
+    // FIX 3: Generate a single new activity with Claude — now includes placeName
     const message = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 500,
@@ -241,6 +259,7 @@ Return ONLY a JSON object:
 {
   "timeSlot": "${timeSlot}",
   "title": "activity title",
+  "placeName": "specific venue or place name in ${plan.location}",
   "description": "2 sentence description",
   "type": "indoor or outdoor",
   "reason": "why this fits the vibe"
@@ -255,14 +274,17 @@ Return ONLY a JSON object:
 
     const activity = JSON.parse(text.substring(start, end + 1));
 
-    // Save it to DB
+    // FIX 3: Geocode the regenerated activity
+    const { lat, lng } = await geocodePlace(activity.placeName, plan.location);
+
+    // FIX 3: Save with place_name, lat, lng
     const result = await pool.query(
-        `INSERT INTO activities (plan_day_id, time_slot, title, description, type, reason)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-        [dayId, activity.timeSlot, activity.title, activity.description, activity.type, activity.reason]
+        `INSERT INTO activities (plan_day_id, time_slot, title, description, type, reason, place_name, lat, lng)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        [dayId, activity.timeSlot, activity.title, activity.description, activity.type, activity.reason, activity.placeName, lat, lng]
     );
 
-    return { id: result.rows[0].id, ...activity };
+    return { id: result.rows[0].id, ...activity, lat, lng };
 };
 
 module.exports = { createPlan, getPlansByUser, getPlanById, deletePlan, getDiscovery, deleteActivity, regenerateActivity };

@@ -5,6 +5,11 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY
 });
 
+const stripCiteTags = (text) => {
+    if (!text) return text;
+    return text.replace(/<cite[^>]*>|<\/cite>/g, '');
+};
+
 const moodProfiles = {
   dopamine_mode: {
     budget: 'medium',
@@ -106,6 +111,7 @@ IMPORTANT: Respond ONLY with a valid JSON array. Start with [ and end with ]. No
       {
         "timeSlot": "morning",
         "title": "Specific fun activity name",
+        "placeName": "Ferry Building Marketplace",
         "description": "Sounds like a friend texting you about this place",
         "type": "outdoor or indoor",
         "reason": "Validates the mood emotionally, not just practically"
