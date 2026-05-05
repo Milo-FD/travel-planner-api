@@ -82,6 +82,30 @@ const getPlanById = async (planId, userId) => {
     return result.rows[0];
 };
 
+// FIX: Instead of skipping activities that fail geocoding (which caused missing
+// morning/afternoon/evening slots), fall back to the city center coordinates.
+// This guarantees all 3 activities always save, and the map pin just lands
+// in the general area rather than disappearing entirely.
+const geocodeWithFallback = async (placeName, location) => {
+    try {
+        const coords = await geocodePlace(placeName, location);
+        if (coords?.lat && coords?.lng) return coords;
+    } catch (err) {
+        console.warn(`Geocoding failed for "${placeName}": ${err.message}`);
+    }
+
+    // Fallback: geocode the city itself
+    console.warn(`Falling back to city center coordinates for "${placeName}" in ${location}`);
+    try {
+        const fallback = await geocodePlace(location, location);
+        if (fallback?.lat && fallback?.lng) return fallback;
+    } catch (err) {
+        console.warn(`City center fallback also failed for ${location}: ${err.message}`);
+    }
+
+    return { lat: null, lng: null };
+};
+
 const createPlan = async (userId, { location, startDate, endDate, mood, isEmergency = false }) => {
     // Step 1: Create the plan in DB with status 'pending'
     const planResult = await pool.query(
@@ -108,12 +132,13 @@ const createPlan = async (userId, { location, startDate, endDate, mood, isEmerge
             [plan.id, day.date, JSON.stringify(weatherForDay?.weather || {})]
         );
 
-        // FIX 1: planDayId was missing
         const planDayId = dayResult.rows[0].id;
 
         for (const activity of day.activities) {
-    await sleep(1100); // just over 1 second to be safe
-    const { lat, lng } = await geocodePlace(activity.placeName, location);
+            await sleep(1100);
+
+            // Use fallback instead of skipping — keeps all 3 time slots intact
+            const { lat, lng } = await geocodeWithFallback(activity.placeName, location);
 
             await pool.query(
                 `INSERT INTO activities 
@@ -169,7 +194,7 @@ const getDiscovery = async (city) => {
             role: 'user',
             content: `You are a witty Gen Z local guide for ${city}. Generate 4 daily discovery cards for today. Be specific, fun, and emotionally aware.
 
-Return ONLY a JSON array with exactly 4 items:
+Return ONLY a JSON array with exactly 4 items. No markdown, no explanation, just the raw JSON array:
 [
   {
     "type": "random_plan",
@@ -203,10 +228,13 @@ Return ONLY a JSON array with exactly 4 items:
         }]
     });
 
-    const fullResponse = message.content
+    const rawResponse = message.content
         .map(block => block.type === 'text' ? block.text : '')
         .filter(Boolean)
         .join('\n');
+
+    // Strip cite tags from discovery responses too
+    const fullResponse = rawResponse.replace(/<cite[^>]*>|<\/cite>/g, '');
 
     const start = fullResponse.indexOf('[');
     const end = fullResponse.lastIndexOf(']');
@@ -226,7 +254,6 @@ const deleteActivity = async (planId, dayId, activityId, userId) => {
     );
     if (!planCheck.rows[0]) return null;
 
-    // Delete the activity — join through plan_days to ensure dayId matches
     const result = await pool.query(
         `DELETE FROM activities 
          WHERE id = $1 
@@ -238,14 +265,12 @@ const deleteActivity = async (planId, dayId, activityId, userId) => {
 };
 
 const regenerateActivity = async (planId, dayId, timeSlot, userId) => {
-    // Get the plan for context
     const plan = await getPlanById(planId, userId);
     if (!plan) return null;
 
     const day = plan.days?.find(d => d.id === dayId);
     if (!day) return null;
 
-    // FIX 3: Generate a single new activity with Claude — now includes placeName
     const message = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 500,
@@ -255,11 +280,15 @@ const regenerateActivity = async (planId, dayId, timeSlot, userId) => {
 The mood/vibe is: ${plan.preferences?.mood}.
 Weather: ${JSON.stringify(day.weather)}.
 
-Return ONLY a JSON object:
+CRITICAL: "placeName" must be a real, specific, Google Maps-searchable venue in ${plan.location}.
+Good: "Tartine Bakery", "Alamo Square Park", "The Interval at Long Now".
+Bad: "a local cafe", "nice park", "trendy restaurant".
+
+Return ONLY a JSON object with no markdown or extra text:
 {
   "timeSlot": "${timeSlot}",
   "title": "activity title",
-  "placeName": "specific venue or place name in ${plan.location}",
+  "placeName": "Real, specific venue name in ${plan.location}",
   "description": "2 sentence description",
   "type": "indoor or outdoor",
   "reason": "why this fits the vibe"
@@ -274,10 +303,9 @@ Return ONLY a JSON object:
 
     const activity = JSON.parse(text.substring(start, end + 1));
 
-    // FIX 3: Geocode the regenerated activity
-    const { lat, lng } = await geocodePlace(activity.placeName, plan.location);
+    // Use fallback here too for consistency
+    const { lat, lng } = await geocodeWithFallback(activity.placeName, plan.location);
 
-    // FIX 3: Save with place_name, lat, lng
     const result = await pool.query(
         `INSERT INTO activities (plan_day_id, time_slot, title, description, type, reason, place_name, lat, lng)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,

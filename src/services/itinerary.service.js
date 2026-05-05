@@ -6,8 +6,8 @@ const client = new Anthropic({
 });
 
 const stripCiteTags = (text) => {
-    if (!text) return text;
-    return text.replace(/<cite[^>]*>|<\/cite>/g, '');
+  if (!text) return text;
+  return text.replace(/<cite[^>]*>|<\/cite>/g, '');
 };
 
 const moodProfiles = {
@@ -99,19 +99,42 @@ Rules for being a good friend:
 - Activity titles should be fun and specific, not generic (NOT "visit a museum", YES "lose yourself in the Surrealism wing at SFMOMA")
 - Descriptions should sound like a friend texting you, not a tour guide
 - Reasons should validate the mood, not just describe the weather
-- Each day needs morning, afternoon and evening
 - Make it feel curated, spontaneous, and cinematic
 
-IMPORTANT: Respond ONLY with a valid JSON array. Start with [ and end with ]. No other text.
+STRICT RULES — VIOLATIONS WILL BREAK THE APP:
+
+1. EVERY day MUST have EXACTLY 3 activities: one "morning", one "afternoon", one "evening". No exceptions. No missing slots.
+
+2. Each of the 3 activities MUST be at a COMPLETELY DIFFERENT venue/placeName. Never use the same event, venue, or location more than once per day — not even as a "lead up" or "vibe" activity. If there's a concert in the evening, the afternoon must be somewhere entirely unrelated.
+
+3. Every "placeName" MUST be a real, specific, Google Maps-searchable venue in ${location}. Good examples: "Ferry Building Marketplace", "Dolores Park", "SFMOMA", "Tartine Bakery". NEVER use vague descriptions like "a local cafe", "downtown park", or "nearby restaurant" — these names get geocoded to coordinates and vague names break the app.
+
+4. Respond ONLY with a valid JSON array. Start with [ and end with ]. No markdown, no explanation, no other text.
 
 [
   {
-    "date": "2026-04-30",
+    "date": "YYYY-MM-DD",
     "activities": [
       {
         "timeSlot": "morning",
         "title": "Specific fun activity name",
-        "placeName": "Ferry Building Marketplace",
+        "placeName": "Real, specific, Google Maps-searchable venue in ${location}",
+        "description": "Sounds like a friend texting you about this place",
+        "type": "outdoor or indoor",
+        "reason": "Validates the mood emotionally, not just practically"
+      },
+      {
+        "timeSlot": "afternoon",
+        "title": "Specific fun activity name — DIFFERENT venue from morning",
+        "placeName": "Real, specific venue in ${location} — DIFFERENT from morning's venue",
+        "description": "Sounds like a friend texting you about this place",
+        "type": "outdoor or indoor",
+        "reason": "Validates the mood emotionally, not just practically"
+      },
+      {
+        "timeSlot": "evening",
+        "title": "Specific fun activity name — DIFFERENT venue from morning and afternoon",
+        "placeName": "Real, specific venue in ${location} — DIFFERENT from morning and afternoon venues",
         "description": "Sounds like a friend texting you about this place",
         "type": "outdoor or indoor",
         "reason": "Validates the mood emotionally, not just practically"
@@ -123,19 +146,46 @@ IMPORTANT: Respond ONLY with a valid JSON array. Start with [ and end with ]. No
     ]
   });
 
-  const fullResponse = message.content
+  const rawResponse = message.content
     .map(block => block.type === 'text' ? block.text : '')
     .filter(Boolean)
     .join('\n');
+
+  const fullResponse = stripCiteTags(rawResponse);
 
   const start = fullResponse.indexOf('[');
   const end = fullResponse.lastIndexOf(']');
 
   if (start === -1 || end === -1) {
-    throw new Error('Could not parse itinerary from AI response');
+    throw new AppError('Could not parse itinerary from AI response', 500);
   }
 
-  return JSON.parse(fullResponse.substring(start, end + 1));
+  const itinerary = JSON.parse(fullResponse.substring(start, end + 1));
+
+  // Post-parse validation: enforce exactly 3 unique time slots per day
+  const requiredSlots = ['morning', 'afternoon', 'evening'];
+
+  for (const day of itinerary) {
+    // Deduplicate by timeSlot in case the model returned the same slot twice
+    const seen = new Set();
+    day.activities = day.activities.filter(a => {
+      if (seen.has(a.timeSlot)) return false;
+      seen.add(a.timeSlot);
+      return true;
+    });
+
+    const presentSlots = day.activities.map(a => a.timeSlot);
+    const missingSlots = requiredSlots.filter(s => !presentSlots.includes(s));
+
+    if (missingSlots.length > 0) {
+      throw new AppError(
+        `AI returned incomplete itinerary for ${day.date} — missing slots: ${missingSlots.join(', ')}`,
+        500
+      );
+    }
+  }
+
+  return itinerary;
 };
 
 module.exports = { generateItinerary, moodProfiles };
