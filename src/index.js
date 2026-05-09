@@ -22,6 +22,6 @@ app.use('/api/v1/plans', plansRoutes);
 
 app.use(errorHandler);
 
-app.listen(PORT, `192.168.4.23`,  () => {
+app.listen(PORT, () => {
     console.log(`Server running in port ${PORT}`);
 });
