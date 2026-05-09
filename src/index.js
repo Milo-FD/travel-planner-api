@@ -8,8 +8,8 @@ const app = express();
 app.use(express.json()); // Lets Express read JSON request bodies
 
 const authRoutes = require('./routes/auth.routes');
-const plansRoutes = require('./routes/plans.routes');
-const errorHandler = require('./middleware/error.middleware');
+//const plansRoutes = require('./routes/plans.routes');
+//const errorHandler = require('./middleware/error.middleware');
 
 const PORT = process.env.PORT || 3000;
 
@@ -18,8 +18,8 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/auth', authRoutes);
-app.use('/api/v1/plans', plansRoutes);
-app.use(errorHandler);
+//app.use('/api/v1/plans', plansRoutes);
+//app.use(errorHandler);
 
 app.listen(PORT, () => {
     console.log(`Server running in port ${PORT}`);
