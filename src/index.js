@@ -1,5 +1,6 @@
 const express = require('express');
 const dotenv = require('dotenv');
+const cors = require('cors');
 
 
 dotenv.config();
@@ -16,7 +17,7 @@ const PORT = process.env.PORT || 3000;
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', message: 'Travel Planner API is running' });
 });
-
+app.use(cors());
 app.use('/auth', authRoutes);
 app.use('/api/v1/plans', plansRoutes);
 app.use(errorHandler);
