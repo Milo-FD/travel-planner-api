@@ -6,7 +6,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const app = express();
-app.use(express.json()); // Lets Express read JSON request bodies
+app.use(express.json()); 
 
 const authRoutes = require('./routes/auth.routes');
 const plansRoutes = require('./routes/plans.routes');
